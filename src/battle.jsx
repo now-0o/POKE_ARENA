@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FIGHTERS, DODGE, WORLD } from './combat-data.js';
+import { FIGHTERS, DODGE, WORLD, ENERGY } from './combat-data.js';
 import { createBattle, activeFighter, stepBattle } from './combat-engine.js';
-import { loadCombatAssets, renderArenaFloor, renderBattle, viewportTransform } from './combat-renderer.js';
+import { loadCombatAssets, renderArenaFloor, renderBattle } from './combat-renderer.js';
+import { updateCamera, screenToWorld } from './combat-camera.js';
 import { GameButton, Sprite, UI } from './pixel-ui.jsx';
 import './battle.css';
 let cachedAssets;
@@ -16,9 +17,9 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
     const input = { dx: 0, dy: 0, aim: { x: 1170, y: 450 } }, keys = new Set(); inputRef.current = input;
     setLoading(true); setError(''); setPaused(false); setHud(null);
     function snapshot() {
-      setHud({ teams: state.teams.map(team => team.map(f => ({ ...f, cds: { ...f.cds } }))), active: [...state.active], phase: state.phase, winner: state.winner, timeLeft: state.timeLeft, stats: state.stats });
+      setHud({ teams: state.teams.map(team => team.map(f => ({ ...f, cds: { ...f.cds } }))), active: [...state.active], phase: state.phase, winner: state.winner, timeLeft: state.timeLeft, stats: state.stats, energy: [...state.energy] });
     }
-    function clearInput() { keys.clear(); Object.assign(input, { dx: 0, dy: 0, attack: false, q: false, e: false, dodge: false }); }
+    function clearInput() { keys.clear(); Object.assign(input, { dx: 0, dy: 0, attack: false, q: false, r: false, e: false, dodge: false }); }
     function pause() { clearInput(); if (state && state.phase !== 'finished') { state.paused = true; setPaused(true); } }
     function movement() { input.dx = Number(keys.has('KeyD')) - Number(keys.has('KeyA')); input.dy = Number(keys.has('KeyS')) - Number(keys.has('KeyW')); }
     function keydown(event) {
@@ -26,18 +27,20 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
       if (event.code === 'Escape' && !event.repeat && state && state.phase !== 'finished') {
         event.preventDefault(); clearInput(); state.paused = !state.paused; setPaused(state.paused); return;
       }
-      if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space'].includes(event.code)) return;
+      if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyR', 'KeyE', 'Space'].includes(event.code)) return;
       if (event.target.tagName === 'BUTTON') return;
       event.preventDefault(); if (!state || state.paused || state.phase === 'finished') return;
       if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) { keys.add(event.code); movement(); }
       if (!event.repeat && state.phase === 'fighting') {
         if (event.code === 'KeyQ') input.q = true;
+        if (event.code === 'KeyR') input.r = true;
         if (event.code === 'KeyE') input.e = true;
         if (event.code === 'Space') input.dodge = true;
       }
     }
     function keyup(event) { keys.delete(event.code); movement(); }
-    function aim(event) { const r = canvas.getBoundingClientRect(), v = viewportTransform(canvas.width, canvas.height); input.aim = { x: ((event.clientX-r.left)*canvas.width/r.width-v.x)/v.scale, y: ((event.clientY-r.top)*canvas.height/r.height-v.y)/v.scale }; }
+    function refreshAim() { if(input.pointer) input.aim=screenToWorld(input.pointer.x*canvas.width,input.pointer.y*canvas.height,canvas.width,canvas.height,state?.camera); }
+    function aim(event) { const r = canvas.getBoundingClientRect(); input.pointer={x:(event.clientX-r.left)/r.width,y:(event.clientY-r.top)/r.height}; refreshAim(); }
     function down(event) { if (event.button !== 0 || event.pointerType === 'touch') return; event.preventDefault(); canvas.focus({ preventScroll: true }); aim(event); input.attack = true; }
     function up() { input.attack = false; }
     function hide() { if (document.hidden) pause(); }
@@ -47,6 +50,7 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
     function frame(now) {
       if (cancelled) return;
       const elapsed = last ? Math.min((now - last) / 1000, .1) : 0; last = now;
+      updateCamera(state,elapsed,reducedMotion); refreshAim();
       if (!state.paused) {
         accumulator += elapsed;
         while (accumulator >= 1 / 60) { stepBattle(state, input, 1 / 60); accumulator -= 1 / 60; }
@@ -76,23 +80,23 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
   const finished = hud?.phase === 'finished', won = hud?.winner === 0;
   return <section className="battle-screen screen-enter" aria-label="봇 트레이닝 전투">
     <div className="battle-heading"><span className="pixel-eyebrow">LEAGUE ARENA <small>3 VS 3 · TRAINING</small></span><span className="battle-clock">{hud ? `${Math.floor(Math.ceil(hud.timeLeft) / 60)}:${String(Math.ceil(hud.timeLeft) % 60).padStart(2, '0')}` : '3:00'}</span><button className="battle-pause" onClick={togglePause} disabled={loading || finished || !!error}>Ⅱ 일시정지 <kbd>ESC</kbd></button></div>
-    <div className="battle-scoreboard">{[player, cpu].map((f, side) => <section className={`battle-health side-${side}`} key={side}><div className="battle-health-title"><span>{side ? 'CPU / 연습 봇' : `1P / ${user.username}`}</span><strong>{f && byId(f.id)?.name}</strong><span>{f ? `${Math.ceil(f.hp)} / ${f.maxHp}` : '…'}</span></div><div className="battle-health-bar"><i style={{ width: `${f ? 100 * f.hp / f.maxHp : 100}%` }} /></div><div className="battle-team">{(hud?.teams[side] || []).map((p, i) => <span key={p.id} className={`${p.hp <= 0 ? 'fainted' : ''} ${hud.active[side] === i ? 'active' : ''}`}><img src={`${UI}pokeball${p.hp <= 0 ? '-empty' : ''}.png`} alt="" />{byId(p.id)?.name}<small>{p.hp <= 0 ? '기절' : `${Math.ceil(p.hp / p.maxHp * 100)}%`}</small></span>)}</div></section>)}</div>
-    <div className="battle-viewport"><canvas ref={canvasRef} width="1600" height="900" tabIndex={0} aria-label="전투장. WASD 이동, 마우스 조준, 클릭 단발공격, Q E 기술, 스페이스 회피, ESC 일시정지" />
+    <div className="battle-scoreboard">{[player, cpu].map((f, side) => <section className={`battle-health side-${side}`} key={side}><div className="battle-health-title"><span>{side ? 'CPU / 연습 봇' : `1P / ${user.username}`}</span><strong>{f && byId(f.id)?.name}</strong><span>{f ? `${Math.ceil(f.hp)} / ${f.maxHp}` : '…'}</span></div><div className="battle-health-bar"><i style={{ width: `${f ? 100 * f.hp / f.maxHp : 100}%` }} /></div><div className="battle-energy-bar" aria-label={`궁극기 게이지 ${Math.floor(hud?.energy?.[side] || 0)}%`}><i style={{width:`${hud?.energy?.[side] || 0}%`}}/><span>{(hud?.energy?.[side] || 0)>=99.999 ? 'ULT READY' : `ULT ${Math.floor(hud?.energy?.[side] || 0)}%`}</span></div><div className="battle-team">{(hud?.teams[side] || []).map((p, i) => <span key={p.id} className={`${p.hp <= 0 ? 'fainted' : ''} ${hud.active[side] === i ? 'active' : ''}`}><img src={`${UI}pokeball${p.hp <= 0 ? '-empty' : ''}.png`} alt="" />{byId(p.id)?.name}<small>{p.hp <= 0 ? '기절' : `${Math.ceil(p.hp / p.maxHp * 100)}%`}</small></span>)}</div></section>)}</div>
+    <div className="battle-viewport"><canvas ref={canvasRef} width="1600" height="900" tabIndex={0} aria-label="전투장. WASD 이동, 마우스 조준, 클릭 단발공격, Q R 기술, E 궁극기, 스페이스 회피, ESC 일시정지" />
       {(loading || error) && <div className="battle-overlay"><div className="pixel-frame frame-paper battle-dialog"><img src={`${UI}pokeball.png`} alt="" /><h2>{error || '전투장 준비 중…'}</h2>{error && <GameButton onClick={() => setRun(v => v + 1)}>다시 불러오기</GameButton>}</div></div>}
       {paused && !finished && <div className="battle-overlay"><div className="pixel-frame frame-paper battle-dialog"><span className="pixel-eyebrow">TAKE A BREATH</span><h2>잠깐 쉬어가기</h2><p>전투가 일시정지됐어요.</p><GameButton onClick={togglePause}>전투 계속 ▶</GameButton><GameButton tone="blue" onClick={onBack}>팀 확인으로</GameButton></div></div>}
       {finished && <div className="battle-overlay"><div className={`pixel-frame ${won ? 'frame-gold' : 'frame-paper'} battle-dialog result-dialog`} role="status"><span className="pixel-eyebrow">TRAINING COMPLETE</span><h1>{hud.winner === 'draw' ? 'DRAW' : won ? 'VICTORY!' : 'GOOD TRY!'}</h1><p>{hud.winner === 'draw' ? '막상막하의 승부! 한 번 더 도전해 볼까?' : won ? '파트너와 함께 승리를 거뒀다!' : '멋진 승부였어. 다시 도전해 보자!'}</p><p className="battle-result-stats">회피 성공 {hud.stats?.dodges[0] || 0} · 빈틈 공략 {hud.stats?.punishes[0] || 0}</p><div className="result-partners">{room.team.map(id => <Sprite key={id} pokemon={byId(id)} size="slot" />)}</div><GameButton onClick={() => setRun(v => v + 1)}>같은 팀으로 재대결 ▶</GameButton><GameButton tone="blue" disabled={disabled} onClick={onEdit}>포켓몬 다시 선택</GameButton><button className="back-link" onClick={onBack}>팀 확인으로 돌아가기</button></div></div>}
     </div>
     <div className="battle-status" aria-live="polite">{player?.action ? `${player.action.move.name} · ${player.action.phase === 'windup' ? '준비 중 · 방향 고정' : '사용 중'}` : player?.recovery > .05 ? '후딜 · 거리 벌리기' : player?.stun > 0 ? '경직' : player?.counter > 0 ? '정밀 회피 성공 · 다음 공격 강화' : '공격을 유도하고, 피하고, 빈틈에 반격하세요'}</div>
-    <div className="battle-skills">{stats && <><div className="battle-partner"><Sprite pokemon={byId(player.id)} size="slot" /><div><small>YOUR PARTNER</small><strong>{byId(player.id)?.name}</strong><span>{player.slow > 0 ? '이동속도 감소' : player.action?.move.kind === 'heal' ? '잠자는 중 · 피격 시 취소' : '공격 중 방향이 고정돼요'}</span></div></div>{[['basic', 'CLICK'], ['q', 'Q'], ['e', 'E'], ['dodge', 'SPACE']].map(([slot, key]) => {
-      const move = slot === 'dodge' ? { name: '회피', cooldown: DODGE.cooldown, fx: 10 } : stats[slot], cd = player.cds[slot];
+    <div className="battle-skills">{stats && <><div className="battle-partner"><Sprite pokemon={byId(player.id)} size="slot" /><div><small>YOUR PARTNER</small><strong>{byId(player.id)?.name}</strong><span>{player.slow > 0 ? '이동속도 감소' : player.action?.move.kind === 'heal' ? '잠자는 중 · 피격 시 취소' : '공격 중 방향이 고정돼요'}</span></div></div>{[['basic', 'CLICK'], ['q', 'Q'], ['r', 'R'], ['e', 'E'], ['dodge', 'SPACE']].map(([slot, key]) => {
+      const move = slot === 'dodge' ? { name: '회피', cooldown: DODGE.cooldown, fx: 10 } : stats[slot], cd = player.cds[slot], energy=hud.energy?.[0] || 0, ultimate=slot === 'e', ready=ultimate?energy >= ENERGY.max-.001:cd <= 0;
       const locked = slot === 'dodge' ? player.stun > 0 || player.root > 0 || (player.action && player.action.slot !== 'basic') || player.recovery > .22 : !!player.action || player.recovery > .01 || player.stun > 0;
-      return <button className={`skill-tile ${cd > 0 ? 'cooling' : locked ? 'skill-locked' : 'skill-ready'} ${player.action?.slot === slot ? 'casting' : ''}`} key={slot} title={move.hint || (slot === 'dodge' ? '이동 방향 회피 · 기본공격 준비 동작 취소 가능' : '한 번 클릭할 때 한 번 공격')} style={{ '--skill-color': stats.color }} disabled={loading || hud?.phase !== 'fighting' || paused || cd > 0 || locked || player.hp <= 0} onClick={() => trigger(slot === 'basic' ? 'attack' : slot)} onPointerUp={() => { if (slot === 'basic') setTimeout(() => { inputRef.current.attack = false; }, 80); }} aria-label={`${move.name}, ${key}${cd > 0 ? `, ${cd.toFixed(1)}초 후` : ', 사용 가능'}`}>
-        <span className="skill-key">{key}</span><SkillIcon fx={move.fx} /><strong>{move.name}</strong><span className="cooldown-number">{cd > 0 ? cd.toFixed(1) : locked ? '대기' : 'READY'}</span><small>{slot === 'dodge' ? '짧은 무적' : slot === 'basic' ? '단발 공격' : move.hint?.split(' · ')[0]}</small><span className="skill-progress"><i style={{ width: `${100 * (1 - cd / move.cooldown)}%` }} /></span>{cd > 0 && <span className="skill-cooldown" style={{ height: `${100 * cd / move.cooldown}%` }} />}
+      return <button className={`skill-tile ${!ready ? 'cooling' : locked ? 'skill-locked' : 'skill-ready'} ${ultimate ? 'ultimate-tile' : ''} ${player.action?.slot === slot ? 'casting' : ''}`} key={slot} title={move.hint || (slot === 'dodge' ? '이동 방향 회피 · 기본공격 준비 동작 취소 가능' : '한 번 클릭할 때 한 번 공격')} style={{ '--skill-color': stats.color }} disabled={loading || hud?.phase !== 'fighting' || paused || !ready || locked || player.hp <= 0} onClick={() => trigger(slot === 'basic' ? 'attack' : slot)} onPointerUp={() => { if (slot === 'basic') setTimeout(() => { inputRef.current.attack = false; }, 80); }} aria-label={`${move.name}, ${key}${ultimate ? `, 궁극기 게이지 ${Math.floor(energy)}%` : cd > 0 ? `, ${cd.toFixed(1)}초 후` : ', 사용 가능'}`}>
+        <span className="skill-key">{key}</span><SkillIcon fx={move.fx} /><strong>{move.name}</strong><span className="cooldown-number">{ultimate ? ready ? 'ULT READY' : `${Math.floor(energy)}%` : cd > 0 ? cd.toFixed(1) : locked ? '대기' : 'READY'}</span><small>{slot === 'dodge' ? '짧은 무적' : slot === 'basic' ? '단발 공격' : ultimate ? '게이지 궁극기' : move.hint?.split(' · ')[0]}</small><span className="skill-progress"><i style={{ width: `${ultimate ? energy : 100 * (1 - cd / move.cooldown)}%` }} /></span>{!ready && <span className="skill-cooldown" style={{ height: `${ultimate ? 100-energy : 100 * cd / move.cooldown}%` }} />}
 
       </button>;
     })}</>}</div>
     <div className="touch-movement" aria-label="터치 이동">{[[0,-1,'↑'],[-1,0,'←'],[0,1,'↓'],[1,0,'→']].map(([dx,dy,label]) => <button key={label} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); touchMove(dx,dy); }} onPointerUp={() => touchMove(0,0)} onPointerCancel={() => touchMove(0,0)}>{label}</button>)}</div>
-    <p className="battle-help"><span><kbd>W A S D</kbd> 이동</span><span><kbd>마우스</kbd> 조준 · 클릭 단발공격</span><span><kbd>Q</kbd> <kbd>E</kbd> 기술</span><span><kbd>SPACE</kbd> 이동 방향 회피</span><span>공격 준비·후딜에는 기술 연속 사용 불가</span></p>
+    <p className="battle-help"><span><kbd>W A S D</kbd> 이동</span><span><kbd>마우스</kbd> 조준 · 클릭 단발공격</span><span><kbd>Q</kbd> <kbd>R</kbd> 기술 <kbd>E</kbd> 궁극기</span><span><kbd>SPACE</kbd> 이동 방향 회피</span><span>공격 준비·후딜에는 기술 연속 사용 불가</span></p>
   </section>;
 }
 

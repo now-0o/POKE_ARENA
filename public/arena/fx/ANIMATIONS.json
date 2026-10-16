@@ -1,0 +1,34 @@
+{
+  "columns": 6,
+  "rows": 4,
+  "framesPerAnimation": 6,
+  "fps": 14,
+  "generation": "imagegen, four production sprite sheets",
+  "runtimeAlphaCutoff": 230,
+  "sheets": {
+    "elements.png": [
+      "electric",
+      "flame",
+      "water",
+      "leaf"
+    ],
+    "force.png": [
+      "shadow",
+      "fight",
+      "earth",
+      "aura"
+    ],
+    "slashes.png": [
+      "dragonclaw",
+      "moonblast",
+      "speed",
+      "hit"
+    ],
+    "field.png": [
+      "thunder",
+      "fireblast",
+      "whirlpool",
+      "psychic"
+    ]
+  }
+}

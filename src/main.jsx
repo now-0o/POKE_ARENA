@@ -72,7 +72,7 @@ function App() {
   }, [step]);
   return <div className={`game-app phase-${step}`}>
     <div className="game-cabinet" ref={cabinetRef}>
-      <header className="game-header"><a className="brand-link" href="/" aria-label="포케 아레나 홈"><img src={`${UI}logo.png`} alt="POKÉ ARENA" /></a><div className="header-mode"><span className="header-dot" />{labels[step]}<small>BOT TRAINING / VER. 0.4</small></div>
+      <header className="game-header"><a className="brand-link" href="/" aria-label="포케 아레나 홈"><img src={`${UI}logo.png`} alt="POKÉ ARENA" /></a><div className="header-mode"><span className="header-dot" />{labels[step]}<small>BOT TRAINING / VER. 0.5</small></div>
         {user ? <div className="header-account"><img src={`${UI}trainer-red.png`} alt="" /><span>{user.username}</span><button onClick={logout}>나가기</button></div> : <span className="header-badge">3 POKÉMON · 1 TEAM</span>}
       </header>
       <main className="game-main">
