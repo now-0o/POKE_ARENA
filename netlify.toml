@@ -1,0 +1,23 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# HTTP API만 프록시한다. 배포 전 새 아레나 백엔드 주소로 변경한다.
+[[redirects]]
+  from = "/api/*"
+  to = "https://arena.3-34-220-192.sslip.io/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/arena/sprites/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
