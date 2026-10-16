@@ -4,9 +4,11 @@ import { getToken, clearToken } from './auth.js';
 import { ArenaConnection, checkArenaAccount } from './client.js';
 import { UI, LoginScreen, RoomScreen, SelectionScreen, ReadyScreen } from './pixel-ui.jsx';
 import './styles.css';
+import { BattleScreen } from './battle.jsx';
 
 function App() {
   const [user, setUser] = useState(null);
+  const [battling, setBattling] = useState(false);
   const [checking, setChecking] = useState(!!getToken());
   const [sessionError, setSessionError] = useState('');
   const [roster, setRoster] = useState([]);
@@ -47,25 +49,26 @@ function App() {
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
-  function logout() { connection.current?.close(); clearToken(); setUser(null); setRoom(null); setRoster([]); setError(''); }
+  useEffect(() => { if (!room || room.phase !== 'ready') setBattling(false); }, [room?.id, room?.phase]);
+  function logout() { setBattling(false); connection.current?.close(); clearToken(); setUser(null); setRoom(null); setRoster([]); setError(''); }
   const online = status === 'online';
   const disabled = busy || !online;
   const focused = roster.find((p) => p.id === focusId) || roster[0];
-  const step = !user ? 0 : !room || room.phase === 'lobby' ? 1 : room.phase === 'selecting' ? 2 : 3;
-  const labels = ['TRAINER LOGIN', 'TRAINING LOBBY', 'CHARACTER SELECT', 'TEAM READY'];
+  const step = battling && user && room?.phase === 'ready' ? 4 : !user ? 0 : !room || room.phase === 'lobby' ? 1 : room.phase === 'selecting' ? 2 : 3;
+  const labels = ['TRAINER LOGIN', 'TRAINING LOBBY', 'CHARACTER SELECT', 'TEAM READY', 'BATTLE ARENA'];
   return <div className={`game-app phase-${step}`}>
     <div className="game-cabinet">
-      <header className="game-header"><a className="brand-link" href="/" aria-label="포케 아레나 홈"><img src={`${UI}logo.png`} alt="POKÉ ARENA" /></a><div className="header-mode"><span className="header-dot" />{labels[step]}<small>BOT TRAINING / VER. 0.2</small></div>
-        {user ? <div className="header-account"><img src={`${UI}trainer.png`} alt="" /><span>{user.username}</span><button onClick={logout}>나가기</button></div> : <span className="header-badge">3 POKÉMON · 1 TEAM</span>}
+      <header className="game-header"><a className="brand-link" href="/" aria-label="포케 아레나 홈"><img src={`${UI}logo.png`} alt="POKÉ ARENA" /></a><div className="header-mode"><span className="header-dot" />{labels[step]}<small>BOT TRAINING / VER. 0.3</small></div>
+        {user ? <div className="header-account"><img src={`${UI}trainer-red.png`} alt="" /><span>{user.username}</span><button onClick={logout}>나가기</button></div> : <span className="header-badge">3 POKÉMON · 1 TEAM</span>}
       </header>
       <main className="game-main">
         {checking ? <div className="pixel-frame frame-paper loading-dialog"><img src={`${UI}pokeball.png`} alt="" /><p>트레이너 정보를 확인하고 있어요…</p></div> : !user ? <>{sessionError && <div role="alert" className="pixel-frame frame-paper message-dialog">{sessionError}</div>}<LoginScreen onLogin={(account) => { setSessionError(''); setUser(account); }} /></> : <>
           <div className="session-strip"><span>{room ? `ROOM / ${room.name}` : 'TRAINING MODE / BOT MATCH'}</span><div className={`connection ${online ? 'online' : ''}`} role="status"><i />{({ online: '서버 연결됨', connecting: '연결 중', reconnecting: '다시 연결 중', offline: '연결 끊김' })[status]}{status === 'offline' && <button onClick={() => setConnectionVersion((v) => v + 1)}>재연결</button>}</div></div>
           {error && <div className="pixel-frame frame-paper message-dialog" role="alert">{error}</div>}
-          {!room || room.phase === 'lobby' ? <RoomScreen {...{ user, room, roomName, setRoomName, command, disabled }} /> : room.phase === 'selecting' ? <SelectionScreen {...{ user, room, roster, focused, setFocusId, command, disabled }} /> : <ReadyScreen {...{ user, room, roster, disabled, command }} />}
+          {!room || room.phase === 'lobby' ? <RoomScreen {...{ user, room, roomName, setRoomName, command, disabled }} /> : room.phase === 'selecting' ? <SelectionScreen {...{ user, room, roster, focused, setFocusId, command, disabled }} /> : battling ? <BattleScreen {...{ user, room, roster, disabled }} onBack={() => setBattling(false)} onEdit={() => command('team.edit')} /> : <ReadyScreen {...{ user, room, roster, disabled, command }} onStart={() => setBattling(true)} />}
         </>}
       </main>
-      <footer className="game-footer"><span>POKÉ ARENA <b>◆</b> FAN GAME</span><a href="/arena/credits.html" target="_blank" rel="noreferrer">제작자 크레딧</a><span>BOT TRAINING · TEAM SELECT</span></footer>
+      <footer className="game-footer"><span>POKÉ ARENA <b>◆</b> FAN GAME</span><a href="/arena/credits.html" target="_blank" rel="noreferrer">제작자 크레딧</a><span>BOT TRAINING · ACTION BATTLE</span></footer>
     </div>
   </div>;
 }

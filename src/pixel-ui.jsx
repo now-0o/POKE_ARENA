@@ -56,7 +56,7 @@ export function Platform({ children, className = '' }) {
 export function Trainer({ name, bot = false, label, children }) {
   return <section className={`trainer-station ${bot ? 'is-cpu' : 'is-player'}`}>
     <div className={`player-ribbon ${bot ? 'cpu-ribbon' : ''}`}><span>{bot ? 'CPU' : '1P'}</span><strong>{name}</strong></div>
-    <Platform><img className="trainer-sprite" src={`${UI}${bot ? 'bot' : 'trainer'}.png`} alt={bot ? '연습용 로봇 트레이너' : '빨간 모자의 트레이너'} /></Platform>
+    <Platform><img className="trainer-sprite" src={`${UI}${bot ? 'bot' : 'trainer-red'}.png`} alt={bot ? '연습용 로봇 트레이너' : '빨간 모자의 트레이너'} /></Platform>
     <p className="trainer-status">{label}</p>{children}
   </section>;
 }
@@ -101,7 +101,7 @@ export function RoomScreen({ user, room, roomName, setRoomName, command, disable
       <div className="mode-ticket"><img src={`${UI}bot.png`} alt="" /><div><strong>봇 트레이닝</strong><p>플레이어 1명 + 연습 봇</p></div><span>1 VS 1</span></div>
       {room ? <><div className="room-info"><span>방 이름</span><strong>{room.name}</strong><span>팀 구성</span><strong>각자 포켓몬 3마리</strong><span>선택 가능</span><strong>포켓몬 10종</strong></div><GameButton disabled={disabled} onClick={() => command('bot.start')}>▶ 포켓몬 선택으로</GameButton><GameButton tone="blue" disabled={disabled} onClick={() => command('room.leave')}>방 나가기</GameButton></>
         : <form onSubmit={(event) => { event.preventDefault(); command('room.create', { name: roomName.trim() }); }}><label htmlFor="room-name">방 이름</label><input id="room-name" value={roomName} onChange={(event) => setRoomName(event.target.value)} maxLength={24} required disabled={disabled} placeholder="연습방 이름을 입력하세요" /><div className="rule-ticket"><span>룰</span><p>10종 중 3마리 선택<br />같은 팀 중복 선택 불가</p></div><GameButton type="submit" disabled={disabled || !roomName.trim()}>▶ 연습방 만들기</GameButton></form>}
-      <p className="menu-note">현재 버전은 포켓몬 팀 선택까지 진행돼요.</p>
+      <p className="menu-note">3마리 팀으로 봇과 실시간 액션 전투를 즐겨요.</p>
     </section>
   </div>;
 }
@@ -158,7 +158,7 @@ export function SelectionScreen({ user, room, roster, focused, setFocusId, comma
   </div>;
 }
 
-export function ReadyScreen({ user, room, roster, disabled, command }) {
+export function ReadyScreen({ user, room, roster, disabled, command, onStart }) {
   const byId = (id) => roster.find((pokemon) => pokemon.id === id);
-  return <section className="ready-screen screen-enter"><div className="select-title"><span className="pixel-eyebrow">TEAM SELECTION COMPLETE</span><h1>TEAM READY!</h1><p>세 마리의 파트너, 출전 준비 완료!</p></div><div className="ready-matchup">{[{ name: user.username, ids: room.team, cpu: false }, { name: '연습 봇', ids: room.botTeam, cpu: true }].map((side) => <section className={`pixel-frame ${side.cpu ? 'frame-red' : 'frame-cyan'} ready-side`} key={side.cpu ? 'cpu' : 'player'}><div className={`player-ribbon ${side.cpu ? 'cpu-ribbon' : ''}`}><span>{side.cpu ? 'CPU' : '1P'}</span><strong>{side.name}</strong></div><div className="ready-lineup">{side.ids.map((id, index) => <div className={index === 0 ? 'ready-lead' : ''} key={id}><Platform><Sprite pokemon={byId(id)} size={index === 0 ? 'hero' : 'slot'} /></Platform><strong>{byId(id)?.name}</strong><span>{index === 0 ? '선발 포켓몬' : `교체 ${index}`}</span></div>)}</div></section>)}<img className="ready-vs" src={`${UI}vs.png`} alt="대" /></div><div className="pixel-frame frame-paper ready-dialog"><img src={`${UI}pokeball.png`} alt="" /><p>팀 선택 테스트 완료!<br /><span>실시간 전투는 다음 업데이트에서 이어집니다.</span></p></div><div className="ready-actions"><GameButton tone="blue" disabled={disabled} onClick={() => command('room.leave')}>연습방으로</GameButton><GameButton disabled={disabled} onClick={() => command('team.edit')}>팀 다시 고르기 ▶</GameButton></div></section>;
+  return <section className="ready-screen screen-enter"><div className="select-title"><span className="pixel-eyebrow">TEAM SELECTION COMPLETE</span><h1>TEAM READY!</h1><p>세 마리의 파트너, 출전 준비 완료!</p></div><div className="ready-matchup">{[{ name: user.username, ids: room.team, cpu: false }, { name: '연습 봇', ids: room.botTeam, cpu: true }].map((side) => <section className={`pixel-frame ${side.cpu ? 'frame-red' : 'frame-cyan'} ready-side`} key={side.cpu ? 'cpu' : 'player'}><div className={`player-ribbon ${side.cpu ? 'cpu-ribbon' : ''}`}><span>{side.cpu ? 'CPU' : '1P'}</span><strong>{side.name}</strong></div><div className="ready-lineup">{side.ids.map((id, index) => <div className={index === 0 ? 'ready-lead' : ''} key={id}><Platform><Sprite pokemon={byId(id)} size={index === 0 ? 'hero' : 'slot'} /></Platform><strong>{byId(id)?.name}</strong><span>{index === 0 ? '선발 포켓몬' : `교체 ${index}`}</span></div>)}</div></section>)}<img className="ready-vs" src={`${UI}vs.png`} alt="대" /></div><div className="pixel-frame frame-paper ready-dialog"><img src={`${UI}pokeball.png`} alt="" /><p>출전 준비 완료!<br /><span>WASD 이동 · 클릭 기본공격 · Q/E 기술 · SPACE 회피</span></p></div><div className="ready-actions"><GameButton disabled={disabled} onClick={onStart}>▶ 전투 시작!</GameButton><GameButton tone="blue" disabled={disabled} onClick={() => command('room.leave')}>연습방으로</GameButton><GameButton disabled={disabled} onClick={() => command('team.edit')}>팀 다시 고르기 ▶</GameButton></div></section>;
 }

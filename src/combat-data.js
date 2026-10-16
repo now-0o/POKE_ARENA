@@ -1,0 +1,15 @@
+const move = (name, kind, fx, damage, cooldown, extra = {}) => ({ name, kind, fx, damage, cooldown, ...extra });
+export const FIGHTERS = {
+  pikachu: { hp: 210, speed: 205, color: '#ffe579', basic: move('전기쇼크', 'projectile', 0, 13, .38, { speed: 480, range: 390 }), q: move('10만볼트', 'beam', 0, 35, 4.2, { range: 370, radius: 23 }), e: move('번개', 'area', 12, 49, 7, { range: 310, radius: 72, delay: .65 }) },
+  charizard: { hp: 260, speed: 178, color: '#ff9c65', basic: move('불꽃세례', 'projectile', 1, 16, .46, { speed: 400, range: 350 }), q: move('화염방사', 'beam', 1, 43, 4.5, { range: 330, radius: 34 }), e: move('불대문자', 'area', 13, 57, 7.5, { range: 310, radius: 84, delay: .8 }) },
+  blastoise: { hp: 310, speed: 153, color: '#77d9ff', basic: move('물대포', 'projectile', 2, 17, .5, { speed: 410, range: 350 }), q: move('하이드로펌프', 'beam', 2, 49, 5, { range: 410, radius: 29, knockback: 58 }), e: move('소용돌이', 'area', 14, 47, 7, { range: 300, radius: 90, delay: .65, slow: 1.8 }) },
+  venusaur: { hp: 290, speed: 153, color: '#9ee37e', basic: move('잎날가르기', 'projectile', 3, 17, .49, { speed: 410, range: 380 }), q: move('솔라빔', 'beam', 3, 54, 6, { range: 440, radius: 30, delay: .65 }), e: move('오물폭탄', 'area', 4, 44, 6.5, { range: 320, radius: 83, delay: .7, slow: 1.5 }) },
+  gengar: { hp: 205, speed: 204, color: '#c397ff', basic: move('핥기', 'melee', 4, 19, .42, { range: 90, radius: 38 }), q: move('섀도볼', 'projectile', 4, 44, 4, { range: 450, speed: 365, radius: 23 }), e: move('오물폭탄', 'area', 4, 46, 6.4, { range: 290, radius: 81, delay: .6, slow: 1.6 }) },
+  machamp: { hp: 310, speed: 166, color: '#ffb684', basic: move('펀치', 'melee', 5, 22, .41, { range: 93, radius: 36 }), q: move('크로스촙', 'melee', 5, 53, 4, { range: 115, radius: 48, knockback: 50 }), e: move('폭발펀치', 'dash', 5, 48, 6, { range: 174, radius: 42, slow: 1.5 }) },
+  snorlax: { hp: 390, speed: 127, color: '#e7d7a2', basic: move('몸통박치기', 'melee', 6, 23, .58, { range: 98, radius: 44 }), q: move('누르기', 'dash', 6, 53, 5.5, { range: 153, radius: 59, slow: 1.8 }), e: move('잠자기', 'heal', 15, 0, 12, { heal: 85, delay: 1.25 }) },
+  lucario: { hp: 245, speed: 200, color: '#85dfff', basic: move('발경', 'melee', 7, 19, .38, { range: 94, radius: 35 }), q: move('파동탄', 'projectile', 7, 43, 4, { range: 460, speed: 410, radius: 22 }), e: move('신속', 'dash', 10, 40, 5.4, { range: 215, radius: 36 }) },
+  garchomp: { hp: 290, speed: 186, color: '#aca3ff', basic: move('드래곤클로', 'melee', 8, 21, .45, { range: 105, radius: 38 }), q: move('드래곤다이브', 'dash', 8, 48, 5, { range: 199, radius: 44 }), e: move('지진', 'area', 6, 58, 7.3, { range: 0, radius: 126, delay: .6, knockback: 44 }) },
+  gardevoir: { hp: 215, speed: 182, color: '#ffb8ed', basic: move('염동력', 'projectile', 15, 15, .43, { speed: 430, range: 390 }), q: move('사이코키네시스', 'area', 15, 45, 4.8, { range: 350, radius: 75, delay: .55, slow: 1.2 }), e: move('문포스', 'projectile', 9, 52, 6.6, { range: 480, speed: 350, radius: 27 }) },
+};
+export const WORLD = { width: 960, height: 540, left: 53, right: 907, top: 87, bottom: 486 };
+export const DODGE = { duration: .16, invulnerability: .23, speed: 780, cooldown: 1.65 };
