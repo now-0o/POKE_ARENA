@@ -56,9 +56,23 @@ function App() {
   const focused = roster.find((p) => p.id === focusId) || roster[0];
   const step = battling && user && room?.phase === 'ready' ? 4 : !user ? 0 : !room || room.phase === 'lobby' ? 1 : room.phase === 'selecting' ? 2 : 3;
   const labels = ['TRAINER LOGIN', 'TRAINING LOBBY', 'CHARACTER SELECT', 'TEAM READY', 'BATTLE ARENA'];
+  const cabinetRef = useRef(null);
+  useEffect(() => {
+    const cabinet = cabinetRef.current;
+    if (!cabinet) return;
+    if (step === 4) { cabinet.style.removeProperty('--cabinet-scale'); return; }
+    const fit = () => {
+      const height = cabinet.offsetHeight;
+      const available = (window.visualViewport?.height || window.innerHeight) - 16;
+      cabinet.style.setProperty('--cabinet-scale', String(Math.min(1, available / Math.max(1, height))));
+    };
+    const observer = new ResizeObserver(fit); observer.observe(cabinet);
+    window.addEventListener('resize', fit); window.visualViewport?.addEventListener('resize', fit); fit();
+    return () => { observer.disconnect(); window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); };
+  }, [step]);
   return <div className={`game-app phase-${step}`}>
-    <div className="game-cabinet">
-      <header className="game-header"><a className="brand-link" href="/" aria-label="포케 아레나 홈"><img src={`${UI}logo.png`} alt="POKÉ ARENA" /></a><div className="header-mode"><span className="header-dot" />{labels[step]}<small>BOT TRAINING / VER. 0.3</small></div>
+    <div className="game-cabinet" ref={cabinetRef}>
+      <header className="game-header"><a className="brand-link" href="/" aria-label="포케 아레나 홈"><img src={`${UI}logo.png`} alt="POKÉ ARENA" /></a><div className="header-mode"><span className="header-dot" />{labels[step]}<small>BOT TRAINING / VER. 0.4</small></div>
         {user ? <div className="header-account"><img src={`${UI}trainer-red.png`} alt="" /><span>{user.username}</span><button onClick={logout}>나가기</button></div> : <span className="header-badge">3 POKÉMON · 1 TEAM</span>}
       </header>
       <main className="game-main">
