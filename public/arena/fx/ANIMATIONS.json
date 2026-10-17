@@ -3,8 +3,8 @@
   "rows": 4,
   "framesPerAnimation": 6,
   "fps": 14,
-  "generation": "imagegen, four production sprite sheets",
-  "runtimeAlphaCutoff": 230,
+  "generation": "imagegen, new v0.6 reference-guided modern volumetric pixel animation sheets",
+  "runtimeAlphaCutoff": 190,
   "sheets": {
     "elements.png": [
       "electric",

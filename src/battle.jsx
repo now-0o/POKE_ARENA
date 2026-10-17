@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FIGHTERS, DODGE, WORLD, ENERGY } from './combat-data.js';
+import { FIGHTERS, DODGE, WORLD, ENERGY, SWITCH } from './combat-data.js';
 import { createBattle, activeFighter, stepBattle } from './combat-engine.js';
 import { loadCombatAssets, renderArenaFloor, renderBattle } from './combat-renderer.js';
 import { updateCamera, screenToWorld } from './combat-camera.js';
@@ -10,6 +10,7 @@ function loadAssets() { if (!cachedAssets) cachedAssets = loadCombatAssets().cat
 export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
   const canvasRef = useRef(null), gameRef = useRef(null), inputRef = useRef({ dx: 0, dy: 0, aim: { x: 1170, y: 450 } });
   const [hud, setHud] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [paused, setPaused] = useState(false), [run, setRun] = useState(0);
+  const [cameraMode,setCameraMode]=useState(()=>localStorage.getItem('arena_camera_mode')==='fixed'?'fixed':'stable');
   const byId = id => roster.find(p => p.id === id);
   useEffect(() => {
     let cancelled = false, frameId, state, assets, floor, last = 0, accumulator = 0, updateTime = 0;
@@ -17,15 +18,18 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
     const input = { dx: 0, dy: 0, aim: { x: 1170, y: 450 } }, keys = new Set(); inputRef.current = input;
     setLoading(true); setError(''); setPaused(false); setHud(null);
     function snapshot() {
-      setHud({ teams: state.teams.map(team => team.map(f => ({ ...f, cds: { ...f.cds } }))), active: [...state.active], phase: state.phase, winner: state.winner, timeLeft: state.timeLeft, stats: state.stats, energy: [...state.energy] });
+      setHud({ teams: state.teams.map(team => team.map(f => ({ ...f, cds: { ...f.cds } }))), active: [...state.active], phase: state.phase, winner: state.winner, timeLeft: state.timeLeft, stats: state.stats, energy: [...state.energy], switchCooldown: [...state.switchCooldown], cinematic: state.cinematic?.remaining > 0 });
     }
-    function clearInput() { keys.clear(); Object.assign(input, { dx: 0, dy: 0, attack: false, q: false, r: false, e: false, dodge: false }); }
+    function clearInput() { keys.clear(); Object.assign(input, { dx: 0, dy: 0, attack: false, q: false, r: false, e: false, dodge: false, switchIndex: null }); }
     function pause() { clearInput(); if (state && state.phase !== 'finished') { state.paused = true; setPaused(true); } }
     function movement() { input.dx = Number(keys.has('KeyD')) - Number(keys.has('KeyA')); input.dy = Number(keys.has('KeyS')) - Number(keys.has('KeyW')); }
     function keydown(event) {
       if (/INPUT|TEXTAREA|SELECT/.test(event.target.tagName) || event.target.isContentEditable || event.ctrlKey || event.altKey || event.metaKey) return;
       if (event.code === 'Escape' && !event.repeat && state && state.phase !== 'finished') {
         event.preventDefault(); clearInput(); state.paused = !state.paused; setPaused(state.paused); return;
+      }
+      if (/^(Digit|Numpad)[123]$/.test(event.code)) {
+        event.preventDefault(); if(!event.repeat && state?.phase==='fighting' && !state.paused)input.switchIndex=Number(event.code.slice(-1))-1; return;
       }
       if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyR', 'KeyE', 'Space'].includes(event.code)) return;
       if (event.target.tagName === 'BUTTON') return;
@@ -62,7 +66,7 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
     loadAssets().then(loaded => {
       if (cancelled) return;
       assets = loaded; floor = document.createElement('canvas'); floor.width = WORLD.width; floor.height = WORLD.height; renderArenaFloor(floor.getContext('2d'), assets);
-      state = createBattle(room.team, room.botTeam); gameRef.current = state; setLoading(false); snapshot();
+      state = createBattle(room.team, room.botTeam); state.camera.mode=localStorage.getItem('arena_camera_mode')==='fixed'?'fixed':'stable'; gameRef.current = state; setLoading(false); snapshot();
       canvas.focus({ preventScroll: true }); frameId = requestAnimationFrame(frame);
     }).catch(err => { if (!cancelled) { setError(err.message); setLoading(false); } });
     window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); window.addEventListener('blur', pause); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
@@ -75,13 +79,20 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
   }, [room.id, run]);
   function togglePause() { const s = gameRef.current; if (!s || s.phase === 'finished') return; s.paused = !s.paused; setPaused(s.paused); canvasRef.current.focus({ preventScroll: true }); }
   function trigger(slot) { if (!gameRef.current || gameRef.current.paused) return; inputRef.current[slot] = true; if (slot === 'attack') setTimeout(() => { inputRef.current.attack = false; }, 100); canvasRef.current.focus({ preventScroll: true }); }
+  function toggleCamera(){const mode=cameraMode==='fixed'?'stable':'fixed';setCameraMode(mode);localStorage.setItem('arena_camera_mode',mode);if(gameRef.current)gameRef.current.camera.mode=mode;}
+  function swap(index){inputRef.current.switchIndex=index;canvasRef.current.focus({preventScroll:true});}
   function touchMove(dx, dy) { inputRef.current.dx = dx; inputRef.current.dy = dy; }
   const player = hud?.teams[0][hud.active[0]], cpu = hud?.teams[1][hud.active[1]], stats = player ? FIGHTERS[player.id] : null;
   const finished = hud?.phase === 'finished', won = hud?.winner === 0;
   return <section className="battle-screen screen-enter" aria-label="봇 트레이닝 전투">
-    <div className="battle-heading"><span className="pixel-eyebrow">LEAGUE ARENA <small>3 VS 3 · TRAINING</small></span><span className="battle-clock">{hud ? `${Math.floor(Math.ceil(hud.timeLeft) / 60)}:${String(Math.ceil(hud.timeLeft) % 60).padStart(2, '0')}` : '3:00'}</span><button className="battle-pause" onClick={togglePause} disabled={loading || finished || !!error}>Ⅱ 일시정지 <kbd>ESC</kbd></button></div>
-    <div className="battle-scoreboard">{[player, cpu].map((f, side) => <section className={`battle-health side-${side}`} key={side}><div className="battle-health-title"><span>{side ? 'CPU / 연습 봇' : `1P / ${user.username}`}</span><strong>{f && byId(f.id)?.name}</strong><span>{f ? `${Math.ceil(f.hp)} / ${f.maxHp}` : '…'}</span></div><div className="battle-health-bar"><i style={{ width: `${f ? 100 * f.hp / f.maxHp : 100}%` }} /></div><div className="battle-energy-bar" aria-label={`궁극기 게이지 ${Math.floor(hud?.energy?.[side] || 0)}%`}><i style={{width:`${hud?.energy?.[side] || 0}%`}}/><span>{(hud?.energy?.[side] || 0)>=99.999 ? 'ULT READY' : `ULT ${Math.floor(hud?.energy?.[side] || 0)}%`}</span></div><div className="battle-team">{(hud?.teams[side] || []).map((p, i) => <span key={p.id} className={`${p.hp <= 0 ? 'fainted' : ''} ${hud.active[side] === i ? 'active' : ''}`}><img src={`${UI}pokeball${p.hp <= 0 ? '-empty' : ''}.png`} alt="" />{byId(p.id)?.name}<small>{p.hp <= 0 ? '기절' : `${Math.ceil(p.hp / p.maxHp * 100)}%`}</small></span>)}</div></section>)}</div>
-    <div className="battle-viewport"><canvas ref={canvasRef} width="1600" height="900" tabIndex={0} aria-label="전투장. WASD 이동, 마우스 조준, 클릭 단발공격, Q R 기술, E 궁극기, 스페이스 회피, ESC 일시정지" />
+    <div className="battle-heading"><span className="pixel-eyebrow">LEAGUE ARENA <small>3 VS 3 · TRAINING</small></span><span className="battle-clock">{hud ? `${Math.floor(Math.ceil(hud.timeLeft) / 60)}:${String(Math.ceil(hud.timeLeft) % 60).padStart(2, '0')}` : '3:00'}</span><button className="camera-toggle" onClick={toggleCamera} aria-label={`카메라 ${cameraMode==='fixed'?'안정 추적':'고정'}`}>카메라: {cameraMode==='fixed'?'고정':'안정'}</button><button className="battle-pause" onClick={togglePause} disabled={loading || finished || !!error}>Ⅱ 일시정지 <kbd>ESC</kbd></button></div>
+    <div className="battle-scoreboard">{[player, cpu].map((f, side) => <section className={`battle-health side-${side}`} key={side}><div className="battle-health-title"><span>{side ? 'CPU / 연습 봇' : `1P / ${user.username}`}</span><strong>{f && byId(f.id)?.name}</strong><span>{f ? `${Math.ceil(f.hp)} / ${f.maxHp}` : '…'}</span></div><div className="battle-health-bar"><i style={{ width: `${f ? 100 * f.hp / f.maxHp : 100}%` }} /></div><div className="battle-energy-bar" aria-label={`궁극기 게이지 ${Math.floor(hud?.energy?.[side] || 0)}%`}><i style={{width:`${hud?.energy?.[side] || 0}%`}}/><span>{(hud?.energy?.[side] || 0)>=99.999 ? 'ULT READY' : `ULT ${Math.floor(hud?.energy?.[side] || 0)}%`}</span></div><div className="battle-team">{(hud?.teams[side] || []).map((p,i)=>{
+      const Tag=side===0?'button':'span',cooldown=hud?.switchCooldown?.[side]||0;
+      return <Tag key={p.id} className={`${p.hp<=0?'fainted':''} ${hud.active[side]===i?'active':''}`} {...(side===0?{onClick:()=>swap(i),disabled:loading||paused||hud.phase!=='fighting'||hud.cinematic||cooldown>0||hud.active[0]===i||p.hp<=0||!!player?.action||player?.recovery>.22||player?.stun>0||player?.root>0||player?.dodgeTime>0,'aria-label':`${byId(p.id)?.name} 교체 ${i+1}${cooldown>0?`, ${cooldown.toFixed(1)}초 후`:''}`}:{})}>
+        {side===0&&<kbd>{i+1}</kbd>}<img src={`${UI}pokeball${p.hp<=0?'-empty':''}.png`} alt=""/>{byId(p.id)?.name}<small>{p.hp<=0?'기절':`${Math.ceil(p.hp/p.maxHp*100)}%`}</small>
+      </Tag>;
+    })}{side===0&&<span className="switch-timer">{(hud?.switchCooldown?.[0]||0)>0?`교체 ${(hud.switchCooldown[0]).toFixed(1)}s`:'교체 가능'}</span>}</div></section>)}</div>
+    <div className="battle-viewport"><canvas ref={canvasRef} width="1600" height="900" tabIndex={0} aria-label="전투장. WASD 이동, 마우스 조준, 클릭 단발공격, Q R 기술, E 궁극기, 스페이스 회피, 1 2 3 교체, ESC 일시정지" />
       {(loading || error) && <div className="battle-overlay"><div className="pixel-frame frame-paper battle-dialog"><img src={`${UI}pokeball.png`} alt="" /><h2>{error || '전투장 준비 중…'}</h2>{error && <GameButton onClick={() => setRun(v => v + 1)}>다시 불러오기</GameButton>}</div></div>}
       {paused && !finished && <div className="battle-overlay"><div className="pixel-frame frame-paper battle-dialog"><span className="pixel-eyebrow">TAKE A BREATH</span><h2>잠깐 쉬어가기</h2><p>전투가 일시정지됐어요.</p><GameButton onClick={togglePause}>전투 계속 ▶</GameButton><GameButton tone="blue" onClick={onBack}>팀 확인으로</GameButton></div></div>}
       {finished && <div className="battle-overlay"><div className={`pixel-frame ${won ? 'frame-gold' : 'frame-paper'} battle-dialog result-dialog`} role="status"><span className="pixel-eyebrow">TRAINING COMPLETE</span><h1>{hud.winner === 'draw' ? 'DRAW' : won ? 'VICTORY!' : 'GOOD TRY!'}</h1><p>{hud.winner === 'draw' ? '막상막하의 승부! 한 번 더 도전해 볼까?' : won ? '파트너와 함께 승리를 거뒀다!' : '멋진 승부였어. 다시 도전해 보자!'}</p><p className="battle-result-stats">회피 성공 {hud.stats?.dodges[0] || 0} · 빈틈 공략 {hud.stats?.punishes[0] || 0}</p><div className="result-partners">{room.team.map(id => <Sprite key={id} pokemon={byId(id)} size="slot" />)}</div><GameButton onClick={() => setRun(v => v + 1)}>같은 팀으로 재대결 ▶</GameButton><GameButton tone="blue" disabled={disabled} onClick={onEdit}>포켓몬 다시 선택</GameButton><button className="back-link" onClick={onBack}>팀 확인으로 돌아가기</button></div></div>}
@@ -96,7 +107,7 @@ export function BattleScreen({ user, room, roster, onBack, onEdit, disabled }) {
       </button>;
     })}</>}</div>
     <div className="touch-movement" aria-label="터치 이동">{[[0,-1,'↑'],[-1,0,'←'],[0,1,'↓'],[1,0,'→']].map(([dx,dy,label]) => <button key={label} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); touchMove(dx,dy); }} onPointerUp={() => touchMove(0,0)} onPointerCancel={() => touchMove(0,0)}>{label}</button>)}</div>
-    <p className="battle-help"><span><kbd>W A S D</kbd> 이동</span><span><kbd>마우스</kbd> 조준 · 클릭 단발공격</span><span><kbd>Q</kbd> <kbd>R</kbd> 기술 <kbd>E</kbd> 궁극기</span><span><kbd>SPACE</kbd> 이동 방향 회피</span><span>공격 준비·후딜에는 기술 연속 사용 불가</span></p>
+    <p className="battle-help"><span><kbd>W A S D</kbd> 이동</span><span><kbd>마우스</kbd> 조준 · 클릭 단발공격</span><span><kbd>Q</kbd> <kbd>R</kbd> 기술 <kbd>E</kbd> 궁극기</span><span><kbd>SPACE</kbd> 이동 방향 회피</span><span><kbd>1 2 3</kbd> 교체 · 14초 대기</span></p>
   </section>;
 }
 

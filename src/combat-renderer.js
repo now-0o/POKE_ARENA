@@ -1,6 +1,6 @@
 import animations from './combat-sprites.json';
 import { cameraTransform, viewportTransform } from './combat-camera.js';
-import { FX_SHEETS, clipSpriteMaterial, drawFX } from './combat-fx.js';
+import { FX_SHEETS, clipSpriteMaterial, drawFX, contactLight } from './combat-fx.js';
 export { viewportTransform } from './combat-camera.js';
 import { FIGHTERS, WORLD } from './combat-data.js';
 import { activeFighter } from './combat-engine.js';
@@ -27,7 +27,7 @@ function sprite(ctx, assets, f, time, alpha = 1, ghost = false) {
 function line(ctx, points, color, width = 2) { ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); points.forEach(([x,y],i) => i ? ctx.lineTo(Math.round(x),Math.round(y)) : ctx.moveTo(Math.round(x),Math.round(y))); ctx.stroke(); }
 function ring(ctx, x, y, r, color, width = 2) { ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); ctx.arc(x,y,Math.max(1,r),0,Math.PI*2); ctx.stroke(); }
 // Actual raster animation: the source rectangle advances through six unique drawings.
-function elemental(ctx,fx,x,y,radius,angle,time,alpha=1){drawFX(ctx,currentAssets,fx,x,y-8,Math.max(42,Math.min(100,radius*3)),angle,time,.5,true,alpha);}
+function elemental(ctx,fx,x,y,radius,angle,time,alpha=1){drawFX(ctx,currentAssets,fx,x,y-8,Math.max(48,Math.min(120,radius*4)),angle,time,.5,true,alpha);}
 let currentAssets;
 function telegraph(ctx, f, a) {
   const m=a.move;if(a.slot==='basic')return;
@@ -54,13 +54,16 @@ export function renderBattle(ctx, state, assets, floor, aim, reducedMotion = fal
     if(z.move.kind==='field')drawFX(ctx,assets,z.move.fx===3?3:14,z.x,z.y,z.move.radius*2,0,state.clock,1,true,.85);
     else if(z.move.kind==='wave'){for(let i=0;i<12;i++){const a=i*Math.PI/6;drawFX(ctx,assets,6,z.x+Math.cos(a)*z.radius,z.y+Math.sin(a)*z.radius,55,0,state.clock,.5,true,.8);}}
   }
+  for(const b of state.projectiles)contactLight(ctx,b.move.fx,b.x,b.y,38,.22);
+  for(const e of state.effects)contactLight(ctx,e.fx,e.x,e.y,Math.min(100,e.radius),Math.min(.25,e.life*.5));
   const fighters=[activeFighter(state,0),activeFighter(state,1)].sort((a,b)=>a.y-b.y);
   for(const f of fighters)if(f.action?.phase==='windup')telegraph(ctx,f,f.action);
   for(const g of state.trails)sprite(ctx,assets,{...g,hp:1},state.clock,g.life/g.maxLife*.3,true);
-  for(const f of fighters){
-    ctx.fillStyle='#28433950';ctx.beginPath();ctx.ellipse(f.x,f.y,17,6,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle=f.side?'#c88470':'#a6d6df';ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(f.x,f.y,20,8,0,0,Math.PI*2);ctx.stroke();
+  function drawFighter(f){
+    ctx.fillStyle='#172b3470';ctx.beginPath();ctx.ellipse(f.x+3,f.y+2,21,7,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle=f.side?'#c88470':'#a6d6df';ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(f.x,f.y,20,8,0,0,Math.PI*2);ctx.stroke();
     sprite(ctx,assets,f,state.clock,(f.invulnerable>0 && !reducedMotion) ? .7 : 1);
     if(f.hp>0){pixel(ctx,f.x-23,f.y-48,46,5,'#345449');pixel(ctx,f.x-22,f.y-47,44*f.hp/f.maxHp,3,f.side?'#d4957e':'#c6db9c');label(ctx,f.side?'CPU':'1P',f.x,f.y-53,9);}
+    if(state.switchExposure[f.side]>0){drawFX(ctx,assets,11,f.x,f.y-22,72,0,.9-state.switchExposure[f.side],.9,false,.85);label(ctx,'교체 중',f.x,f.y+24,11,'#eed5a4');}
     if(f.markTime>0)drawFX(ctx,assets,7,f.x,f.y-44,32,0,state.clock,.5,true,.8);
     if(f.curseTime>0)drawFX(ctx,assets,4,f.x-18,f.y-15,28,0,state.clock,.5,true,.65);
     if(f.stun>0)label(ctx,'···',f.x,f.y-68,16,'#ecdfa2');
@@ -70,7 +73,8 @@ export function renderBattle(ctx, state, assets, floor, aim, reducedMotion = fal
     }
     if(f.action?.move.kind==='leap'&&f.action.phase==='active'){const a=f.action;ring(ctx,a.target.x,a.target.y,a.move.radius,f.side?'#bb7867':'#7aafbe',2);}
   }
-  for(const b of state.projectiles)elemental(ctx,b.move.fx,b.x,b.y,b.radius,b.angle,state.clock);
+  const drawables=[...fighters.map(f=>({y:f.y,draw:()=>drawFighter(f)})),...state.projectiles.map(b=>({y:b.y,draw:()=>elemental(ctx,b.move.fx,b.x,b.y,b.radius,b.angle,state.clock)}))];
+  drawables.sort((a,b)=>a.y-b.y).forEach(item=>item.draw());
   for(const e of state.effects){
     const age=e.maxLife-e.life;
     if(e.kind==='beam'||e.kind==='pull'){

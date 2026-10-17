@@ -4,11 +4,17 @@ export function cameraTransform(width,height,camera){const base=viewportTransfor
 export function screenToWorld(x,y,width,height,camera){const v=cameraTransform(width,height,camera);return{x:(x-v.x)/v.scale,y:(y-v.y)/v.scale};}
 export function updateCamera(state,dt,reducedMotion=false){
  const c=state.camera;if(!c||state.paused)return;
- if(reducedMotion){c.x=800;c.y=450;c.zoom=1;return;}
- const [a,b]=state.teams.map((t,i)=>t[state.active[i]]);
- const targetZoom=Math.max(1,Math.min(1.85,1600/(Math.abs(a.x-b.x)+570),900/(Math.abs(a.y-b.y)+470)));
- const t=1-Math.exp(-Math.min(dt,.1)*(targetZoom<c.zoom?7:3.4));c.zoom+=(targetZoom-c.zoom)*t;
+ if(reducedMotion||c.mode==='fixed'){c.x=800;c.y=450;c.zoom=1;return;}
+ const [a,b]=state.teams.map((t,i)=>t[state.active[i]]);dt=Math.min(dt,.05);
+ // Wide, quiet framing: a 22% maximum zoom, a center dead zone, and capped velocity.
+ const distance=Math.hypot(a.x-b.x,a.y-b.y),desired=1+.22*Math.max(0,Math.min(1,(720-distance)/500));
+ const delta=desired-c.zoom;
+ if(Math.abs(delta)>.015)c.zoom+=Math.sign(delta)*Math.min(Math.abs(delta)*(1-Math.exp(-dt*1.1)),dt*(delta>0?.07:.22));
  const halfW=800/c.zoom,halfH=450/c.zoom;
- const tx=Math.max(halfW,Math.min(1600-halfW,(a.x+b.x)/2)),ty=Math.max(halfH,Math.min(900-halfH,(a.y+b.y)/2-28));
- const follow=1-Math.exp(-Math.min(dt,.1)*5);c.x+=(tx-c.x)*follow;c.y+=(ty-c.y)*follow;
+ const centerX=Math.max(halfW,Math.min(1600-halfW,(a.x+b.x)/2));
+ const centerY=Math.max(halfH,Math.min(900-halfH,(a.y+b.y)/2));
+ for(const [key,target]of [['x',centerX],['y',centerY]]){const d=target-c[key],deadZone=key==='x'?65:40;if(Math.abs(d)>deadZone)c[key]+=Math.sign(d)*Math.min((Math.abs(d)-deadZone)*(1-Math.exp(-dt*1.2)),dt*32);}
+ // Keep edge fighters visible even during a retreat; never zoom in across them.
+ const needX=Math.max(Math.abs(a.x-c.x),Math.abs(b.x-c.x))+100,needY=Math.max(Math.abs(a.y-c.y),Math.abs(b.y-c.y))+145;
+ const safe=Math.max(1,Math.min(1.22,800/needX,450/needY));c.zoom=Math.min(c.zoom,safe);
 }

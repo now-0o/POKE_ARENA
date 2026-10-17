@@ -1,4 +1,4 @@
-import { FIGHTERS, WORLD, DODGE, ENERGY } from './combat-data.js';
+import { FIGHTERS, WORLD, DODGE, ENERGY, SWITCH, arenaBounds } from './combat-data.js';
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const len = (x, y) => Math.hypot(x, y);
 const unit = (x, y) => { const d = len(x, y); return d ? { x: x / d, y: y / d } : { x: 1, y: 0 }; };
@@ -13,10 +13,10 @@ function fighter(id, side, index) {
 }
 export function createBattle(team, botTeam, { ai = true } = {}) {
   if (!team?.length || !botTeam?.length) throw new Error('Both teams are required');
-  return { teams: [team.map((id, i) => fighter(id, 0, i)), botTeam.map((id, i) => fighter(id, 1, i))], active: [0, 0], clock: 0, energy: [0,0], cinematic: null, hitStop: 0, camera: {x:800,y:450,zoom:1}, timeLeft: 180, countdown: 2.6, phase: 'countdown', winner: null, projectiles: [], zones: [], effects: [], trails: [], texts: [], swaps: [0, 0], paused: false, aiEnabled: ai, aiTimer: 1, aiRest: 0, aiTurn: 0, aiDangerSince: null, notice: '', noticeTime: 0, shake: 0, stats: { hits: [0, 0], dodges: [0, 0], punishes: [0, 0] } };
+  return { teams: [team.map((id, i) => fighter(id, 0, i)), botTeam.map((id, i) => fighter(id, 1, i))], active: [0, 0], clock: 0, energy: [0,0], switchCooldown: [0,0], switchExposure: [0,0], switchCount: [0,0], cinematic: null, hitStop: 0, camera: {x:800,y:450,zoom:1}, timeLeft: 180, countdown: 2.6, phase: 'countdown', winner: null, projectiles: [], zones: [], effects: [], trails: [], texts: [], swaps: [0, 0], paused: false, aiEnabled: ai, aiTimer: 1, aiRest: 0, aiTurn: 0, aiDangerSince: null, notice: '', noticeTime: 0, shake: 0, stats: { hits: [0, 0], dodges: [0, 0], punishes: [0, 0] } };
 }
 export const activeFighter = (s, side) => s.teams[side][s.active[side]];
-function contain(f) { f.x = clamp(f.x, WORLD.left + f.radius, WORLD.right - f.radius); f.y = clamp(f.y, WORLD.top + f.radius, WORLD.bottom - f.radius); }
+function contain(f) { const radius=f.radius||18; f.y=clamp(f.y,WORLD.top+radius,WORLD.bottom-radius); const bounds=arenaBounds(f.y); f.x=clamp(f.x,bounds.left+radius,bounds.right-radius); }
 function text(s, f, value, color) { s.texts.push({ x: f.x, y: f.y - 34, value, color, life: .65, maxLife: .65 }); }
 function effect(s, x, y, fx, radius = 18, angle = 0, life = .22, extra = {}) { life=Math.max(.42,life); s.effects.push({ x, y, fx, radius, angle, life, maxLife: life, ...extra }); }
 function notice(s, value) { s.notice = value; s.noticeTime = 1.3; }
@@ -28,7 +28,7 @@ function damage(s, source, target, move, origin = source) {
     if (target.dodgeTime > 0 && !target.counterTriggered && !move.dot) { target.counterTriggered = true; target.counter = 1.25; s.stats.dodges[target.side]++; gainEnergy(s,target.side,ENERGY.dodge); text(s, target, '회피 성공', '#e2eac0'); }
     return false;
   }
-  const punish = target.recovery > .08, counter = source.counter > 0;
+  const punish = target.recovery > .08 || s.switchExposure[target.side] > 0, counter = source.counter > 0;
   const comboBonus = move.detonateMark && target.markTime > 0 && target.markSide === source.side ? 22 : 0;
   if(comboBonus) {target.markTime=0;text(s,target,'파동 연계!', '#bad6df');}
   const amount = Math.round((move.damage + comboBonus + (target.curseTime>0 ? target.curse*3 : 0)) * (source.weaken > 0 ? .7 : 1) * (punish ? 1.2 : 1) * (counter ? 1.2 : 1));
@@ -65,6 +65,7 @@ export function cast(s, f, slot, aim) {
   if(m.ultimate) {s.energy[f.side]=0;s.cinematic={id:f.id,side:f.side,name:m.name,remaining:.55,total:.55};}
   const d = unit(aim.x - f.x, aim.y - f.y), dist = Math.min(distance(f, aim), m.range || 0);
   const target = { x: clamp(f.x + d.x * dist, WORLD.left + 18, WORLD.right - 18), y: clamp(f.y + d.y * dist, WORLD.top + 18, WORLD.bottom - 18) };
+  contain(target);
   f.facing = Math.atan2(d.y, d.x); f.cds[slot] = m.cooldown;
   f.action = { move: m, slot, phase: 'windup', remaining: m.windup, total: m.windup, angle: f.facing, direction: d, origin: { x: f.x, y: f.y }, target, age: 0, nextPulse: m.interval || 1, hit: false };
   return true;
@@ -184,6 +185,11 @@ function bot(s, dt) {
   } else s.aiDangerSince = null;
   s.aiTimer -= dt; if (s.aiTimer > 0 || s.aiRest || f.action || f.recovery) return;
   s.aiTimer = .5; s.aiTurn++;
+  const reserves=s.teams[1].map((p,i)=>({p,i})).filter(({p,i})=>i!==s.active[1]&&p.hp>0);
+  if(reserves.length && (f.hp/f.maxHp<.38 || (s.clock>12 && s.aiTurn%7===0 && dist>155))){
+    reserves.sort((a,b)=>b.p.hp/b.p.maxHp-a.p.hp/a.p.maxHp);
+    if(switchPokemon(s,1,reserves[0].i)){s.aiRest=1.2;return;}
+  }
   const slots = s.aiTurn % 3 ? ['basic', 'q', 'r'] : ['q', 'r', 'basic'];
   if (p.recovery > .25) slots.unshift('q');
   if(s.energy[1]>=ENERGY.max) slots.unshift('e');
@@ -232,6 +238,18 @@ function zones(s, dt) {
   }
   s.zones = s.zones.filter(z => z.life > 0);
 }
+export function switchPokemon(s,side,index) {
+ if(s.phase!=='fighting'||s.paused||s.cinematic?.remaining>0||s.swaps[side]>0||s.switchCooldown[side]>0)return false;
+ const current=activeFighter(s,side),next=s.teams[side][index];
+ if(!next||index===s.active[side]||next.hp<=0||current.hp<=0||current.action||current.dodgeTime>0||current.stun>0||current.root>0||current.recovery>.22)return false;
+ current.action=null;current.attack=0;
+ next.x=current.x;next.y=current.y;next.facing=current.facing;next.action=null;next.dodgeTime=0;next.invulnerable=0;
+ next.recovery=SWITCH.exposure;next.recoveryTotal=SWITCH.exposure;next.recoverySpeed=.3;
+ for(const slot of ['q','r'])next.cds[slot]=Math.max(next.cds[slot],SWITCH.skillLock);
+ next.cds.dodge=Math.max(next.cds.dodge,SWITCH.dodgeLock);
+ s.active[side]=index;s.switchCooldown[side]=SWITCH.cooldown;s.switchExposure[side]=SWITCH.exposure;s.switchCount[side]++;
+ effect(s,current.x,current.y,11,35,0,.5);notice(s,`${side?'CPU':'1P'} · 포켓몬 교체!`);return true;
+}
 function processKO(s, dt) {
   for (let side = 0; side < 2; side++) {
     const f = activeFighter(s, side); if (f.hp > 0) continue;
@@ -254,8 +272,11 @@ export function stepBattle(s, input = {}, dt = 1 / 60) {
   s.noticeTime = Math.max(0, s.noticeTime - dt);
   if (s.phase === 'countdown') { s.countdown -= dt; if (s.countdown <= 0) { s.phase = 'fighting'; notice(s, 'BATTLE START!'); } return; }
   s.timeLeft = Math.max(0, s.timeLeft - dt);
-  for(let side=0;side<2;side++)gainEnergy(s,side,ENERGY.passive*dt);
-  const p = activeFighter(s, 0), cpu = activeFighter(s, 1);
+  for(let side=0;side<2;side++){gainEnergy(s,side,ENERGY.passive*dt);s.switchCooldown[side]=Math.max(0,s.switchCooldown[side]-dt);s.switchExposure[side]=Math.max(0,s.switchExposure[side]-dt);
+    s.teams[side].forEach((f,i)=>{if(i===s.active[side])return;for(const key of Object.keys(f.cds))f.cds[key]=Math.max(0,f.cds[key]-dt);for(const key of ['slow','root','stun','staggerGuard','weaken','empowerTime','counter','burn','markTime','curseTime','recovery'])f[key]=Math.max(0,f[key]-dt);});
+  }
+  if(Number.isInteger(input.switchIndex)){switchPokemon(s,0,input.switchIndex);input.switchIndex=null;}
+  const p = activeFighter(s, 0); let cpu = activeFighter(s, 1);
   for (const f of [p, cpu]) tickFighter(s, f, dt);
   walk(s, p, input.dx || 0, input.dy || 0, dt);
   if (input.aim && !p.action && !p.dodgeTime) p.facing = Math.atan2(input.aim.y - p.y, input.aim.x - p.x);
@@ -263,7 +284,7 @@ export function stepBattle(s, input = {}, dt = 1 / 60) {
   for (const slot of ['q', 'r', 'e']) if (input[slot]) { cast(s, p, slot, input.aim || cpu); input[slot] = false; }
   if (input.attack) { cast(s, p, 'basic', input.aim || cpu); input.attack = false; }
   if(s.cinematic?.remaining>0)return;
-  bot(s, dt); if(s.cinematic?.remaining>0)return; projectiles(s, dt); zones(s, dt);
+  bot(s, dt); cpu=activeFighter(s,1); if(s.cinematic?.remaining>0)return; projectiles(s, dt); zones(s, dt);
   if (p.hp > 0 && cpu.hp > 0) {
     const d = distance(p, cpu), min = p.radius + cpu.radius;
     if (d < min && !p.action && !cpu.action) { const n = unit(cpu.x - p.x, cpu.y - p.y); p.x -= n.x * (min - d) / 2; p.y -= n.y * (min - d) / 2; cpu.x += n.x * (min - d) / 2; cpu.y += n.y * (min - d) / 2; contain(p); contain(cpu); }

@@ -30,3 +30,7 @@ const ultimates = {
 };
 for(const [id,fighter] of Object.entries(FIGHTERS)) fighter.e=ultimates[id];
 export const ENERGY={max:100,passive:2.4,dealt:.5,taken:.22,dodge:10};
+
+export const SWITCH = { cooldown: 14, exposure: .9, skillLock: 2, dodgeLock: 1.2 };
+
+export function arenaBounds(y){const t=Math.max(0,Math.min(1,(y-WORLD.top)/(WORLD.bottom-WORLD.top)));return{left:200-75*t,right:1400+75*t};}

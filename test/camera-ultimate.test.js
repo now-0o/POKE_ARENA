@@ -6,8 +6,8 @@ import {fxFrame,FX_MAP} from '../src/combat-fx.js';
 const advance=(s,sec,input={})=>{for(let i=0;i<Math.ceil(sec*60);i++)stepBattle(s,input,1/60);};
 const setup=(id='pikachu')=>{const s=createBattle([id],['snorlax'],{ai:false});s.phase='fighting';const p=activeFighter(s,0),c=activeFighter(s,1);p.x=650;c.x=750;p.y=c.y=450;return s;};
 test('camera eases toward close fighters and zooms back out without jumping',()=>{
- const s=setup(),c=s.camera;updateCamera(s,1/60);assert(c.zoom>1&&c.zoom<1.1);for(let i=0;i<240;i++)updateCamera(s,1/60);assert(c.zoom>1.8);
- activeFighter(s,0).x=160;activeFighter(s,1).x=1440;const old=c.zoom;updateCamera(s,1/60);assert(c.zoom<old&&c.zoom>1);for(let i=0;i<180;i++)updateCamera(s,1/60);assert(c.zoom<1.01);
+ const s=setup(),c=s.camera;updateCamera(s,1/60);assert(c.zoom>1&&c.zoom<1.1);for(let i=0;i<240;i++)updateCamera(s,1/60);assert(c.zoom>1.19&&c.zoom<=1.22);
+ activeFighter(s,0).x=160;activeFighter(s,1).x=1440;const old=c.zoom;updateCamera(s,1/60);assert(c.zoom<old&&c.zoom>1);for(let i=0;i<180;i++)updateCamera(s,1/60);assert(c.zoom<1.016);
  s.paused=true;const zoom=c.zoom;updateCamera(s,.1);assert.equal(c.zoom,zoom);s.paused=false;updateCamera(s,.1,true);assert.equal(c.zoom,1);
 });
 test('aim inverse stays correct at different camera zooms and viewport sizes',()=>{
